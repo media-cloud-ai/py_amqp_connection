@@ -1,3 +1,4 @@
+
 Python AMQP Connection
 ======================
 
@@ -7,12 +8,12 @@ To connect worker to an AMQP instance
 Build & Installation
 --------------------
 
-###Build only
+### Build only
 ```bash
 python3 setup.py build
 ```
 
-###Build & local install
+### Build & local install
 ```bash
 python3 setup.py install
 ```
@@ -22,7 +23,7 @@ Usage
 ```python
 #!/usr/bin/env python
 
-from amqpconnection import Connection
+from amqp_connection import Connection
 
 conn = Connection()
 
