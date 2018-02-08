@@ -1,1 +1,1 @@
-from connection import Connection
+from amqp_connection.connection import Connection
