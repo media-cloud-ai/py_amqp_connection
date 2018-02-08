@@ -1,0 +1,6 @@
+LICENSE
+README.md
+setup.cfg
+setup.py
+src/__init__.py
+src/connection.py
