@@ -34,7 +34,15 @@ def callback(ch, method, properties, body):
     # produce a respone
     conn.sendJson('out_queue', "OK")
 
-conn.load_configuration()
+config = {
+	"username": "amqp_user",
+	"password": "amqp_password",
+	"vhost": "vhost_name",
+	"hostname": "localhost",
+	"port": 12345
+}
+
+conn.load_configuration(config)
 conn.connect([
     'in_queue',
     'out_queue'
