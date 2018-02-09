@@ -3,14 +3,7 @@ import os
 import json
 import time
 import pika
-import configparser
 import logging
-
-config = configparser.RawConfigParser()
-config.read([
-    'worker.cfg',
-    '/etc/py_ftp_worker/worker.cfg'
-])
 
 class Connection:
 
@@ -19,9 +12,12 @@ class Connection:
         if key in os.environ:
             return os.environ.get(key)
 
-        return config.get('amqp', param)
+        if param in self.amqp_config:
+            return self.amqp_config[param]
+        raise RuntimeError("Missing '" + param + "' configuration value.")
 
-    def load_configuration(self):
+    def load_configuration(self, config: dict):
+        self.amqp_config = config
         self.amqp_username = self.get_parameter('USERNAME', 'username')
         self.amqp_password = self.get_parameter('PASSWORD', 'password')
         self.amqp_vhost    = self.get_parameter('VHOST', 'vhost')
