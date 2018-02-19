@@ -29,21 +29,14 @@ conn = Connection()
 
 def callback(ch, method, properties, body):
     # process the consumed message
-    try:
-        message = body.decode('utf-8')
-        if message == 'Hello':
-            # ACK the message
-            conn.acknowledge_message(method.delivery_tag)
-
-            # produce a respone
-            conn.sendJson('out_queue', "OK")
-
-        else:
-            # NACK the message (and requeue it)
-            conn.acknowledge_message(method.delivery_tag, False)
-
-    except Exception as e:
-        conn.acknowledge_message(method.delivery_tag, False)
+    message = body.decode('utf-8')
+    if message == 'Hello':
+        # produce a respone
+        conn.sendJson('out_queue', "OK")
+        # Acknowledge the message (ACK)
+        return True
+    # Requeue the message (NACK)
+    return False
 
 config = {
 	"username": "amqp_user",
@@ -58,6 +51,6 @@ conn.connect([
     'in_queue',
     'out_queue'
 ])
-conn.consume('in_queue', callback, False)
+conn.consume('in_queue', callback)
 
 ```
