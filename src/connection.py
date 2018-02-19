@@ -17,7 +17,7 @@ class BasicConsumer:
         except Exception as e:
             logging.error("An error occurred in consumer callback: %s", e)
 
-        if ack is None or ack is True:
+        if ack in [None, True]:
             self.channel.basic_ack(method.delivery_tag)
         else:
             self.channel.basic_nack(method.delivery_tag)
