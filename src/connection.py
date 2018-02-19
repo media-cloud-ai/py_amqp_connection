@@ -5,6 +5,23 @@ import time
 import pika
 import logging
 
+class BasicConsumer:
+    def __init__(self, callback, channel):
+        self.consumer_callback = callback
+        self.channel = channel
+
+    def callback(self, ch, method, properties, body):
+        ack = False
+        try:
+            ack = self.consumer_callback.__call__(ch, method, properties, body)
+        except Exception as e:
+            logging.error("An error occurred in consumer callback: %s", e)
+
+        if ack in [None, True]:
+            self.channel.basic_ack(method.delivery_tag)
+        else:
+            self.channel.basic_nack(method.delivery_tag)
+
 class Connection:
 
     def get_parameter(self, key, param):
@@ -53,9 +70,10 @@ class Connection:
         self.channel = channel
 
     def consume(self, queue, callback):
-        self.channel.basic_consume(callback,
+        consumer = BasicConsumer(callback, self.channel)
+        self.channel.basic_consume(consumer.callback,
                       queue=queue,
-                      no_ack=True)
+                      no_ack=False)
 
         logging.info('Service started, waiting messages ...')
         self.channel.start_consuming()
