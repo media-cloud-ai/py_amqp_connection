@@ -60,11 +60,11 @@ class Connection:
         logging.info('Service started, waiting messages ...')
         self.channel.start_consuming()
 
-    def acknowledge_message(self, delivery_tag):
-        self.channel.basic_ack(delivery_tag)
-
-    def reject_message(self, delivery_tag):
-        self.channel.basic_nack(delivery_tag)
+    def acknowledge_message(self, delivery_tag, ack=True):
+        if ack:
+            self.channel.basic_ack(delivery_tag)
+        else:
+            self.channel.basic_nack(delivery_tag)
 
     def send(self, queue, message):
         self.channel.basic_publish(
