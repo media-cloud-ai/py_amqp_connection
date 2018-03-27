@@ -8,6 +8,9 @@ import logging
 from amqp_connection.consumer import BasicConsumer
 
 class Connection:
+    """
+    AMQP connection manager
+    """
 
     def get_parameter(self, key, param):
         key = "AMQP_" + key

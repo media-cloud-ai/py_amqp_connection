@@ -6,7 +6,8 @@ from threading import Thread
 
 class ConsumerProcessThread(Thread):
     """
-    Thread that returns a value on join.
+    Message consumer process thread.
+    Returns a result at the end of the target process.
     """
     def __init__(self, group=None, target=None, name=None, args=(), kwargs=None, *, daemon=None):
         Thread.__init__(self, group, target, name, args, kwargs, daemon=daemon)
@@ -25,7 +26,10 @@ class ConsumerProcessThread(Thread):
 
 
 class BasicConsumer(Thread):
-
+    """
+    AMQP connection message consumer thread.
+    Handle incoming messages, start processing threads and manage acknowledge.
+    """
     def __init__(self, callback, channel, group=None, target=None, name=None, args=(), kwargs=None, *, daemon=None):
         Thread.__init__(self, group, target, name, args, kwargs, daemon=daemon)
         self.consumer_callback = callback
