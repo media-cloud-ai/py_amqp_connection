@@ -46,7 +46,7 @@ class BasicConsumer(Thread):
     def check_current_thread_result(self):
         result = self.current_thread.join()
 
-        logging.debug("Check consumer thread '%s' result: %s", self.current_thread.name, "ACK" if result else "NACK")
+        logging.debug("Check consumer thread '%s' result: %s", self.current_thread.name, "ACK" if result in [None, True] else "NACK")
         if result in [None, True]:
             self.channel.basic_ack(self.current_delivery_tag)
         else:
