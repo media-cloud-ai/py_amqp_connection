@@ -5,6 +5,24 @@ import time
 import pika
 import logging
 
+from threading import Thread
+
+class ThreadWithReturnValue(Thread):
+    """
+    Thread that returns a value on join.
+    """
+    def __init__(self, group=None, target=None, name=None, args=(), kwargs=None, *, daemon=None):
+        Thread.__init__(self, group, target, name, args, kwargs, daemon=daemon)
+        self._return = None
+
+    def run(self):
+        if self._target is not None:
+            self._return = self._target(*self._args, **self._kwargs)
+
+    def join(self):
+        Thread.join(self)
+        return self._return
+
 class BasicConsumer:
     def __init__(self, callback, channel):
         self.consumer_callback = callback
@@ -13,7 +31,9 @@ class BasicConsumer:
     def callback(self, ch, method, properties, body):
         ack = False
         try:
-            ack = self.consumer_callback.__call__(ch, method, properties, body)
+            thread = ThreadWithReturnValue(target = self.consumer_callback.__call__, args = (ch, method, properties, body))
+            thread.start()
+            ack = thread.join()
         except Exception as e:
             logging.error("An error occurred in consumer callback: %s", e)
 
