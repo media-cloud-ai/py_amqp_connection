@@ -9,6 +9,10 @@ from queue import Queue, Empty
 from threading import Thread
 
 class BasicConsumer(Thread):
+    """
+    AMQP connection message consumer thread.
+    Handle incoming messages, process consumer's callback and manage acknowledge.
+    """
     def __init__(self, callback, messages_queue, group=None, target=None, name=None, args=(), kwargs=None, *, daemon=None):
         Thread.__init__(self, group, target, name, args, kwargs, daemon=daemon)
         self.consumer_callback = callback
@@ -34,6 +38,9 @@ class BasicConsumer(Thread):
 
 
 class Connection:
+    """
+    AMQP connection manager
+    """
 
     def get_parameter(self, key, param):
         key = "AMQP_" + key
@@ -71,7 +78,6 @@ class Connection:
         logging.info(self.amqp_port)
         logging.info(self.amqp_vhost)
 
-        # time.sleep(1)
         connection = pika.BlockingConnection(parameters)
         self.connection = connection
         channel = connection.channel()
