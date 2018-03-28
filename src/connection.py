@@ -5,7 +5,37 @@ import time
 import pika
 import logging
 
-from amqp_connection.consumer import BasicConsumer
+from queue import Queue, Empty
+from threading import Thread
+
+class BasicConsumer(Thread):
+    """
+    AMQP connection message consumer thread.
+    Handle incoming messages, process consumer's callback and manage acknowledge.
+    """
+    def __init__(self, callback, messages_queue, group=None, target=None, name=None, args=(), kwargs=None, *, daemon=None):
+        Thread.__init__(self, group, target, name, args, kwargs, daemon=daemon)
+        self.consumer_callback = callback
+        self.messages_queue = messages_queue
+        self.start()
+
+    def run(self):
+        while True:
+            try:
+                (ch, method, properties, body) = self.messages_queue.get()
+                logging.debug("Consume message #%s: %s", method.delivery_tag, body)
+
+                result = self.consumer_callback.__call__(ch, method, properties, body)
+                logging.debug("Message #%s result: %s", method.delivery_tag, "ACK" if result in [None, True] else "NACK")
+
+                if result in [None, True]:
+                    ch.basic_ack(method.delivery_tag)
+                else:
+                    ch.basic_nack(method.delivery_tag)
+
+            except Exception as e:
+                logging.error("An error occurred in consumer callback: %s", e)
+
 
 class Connection:
     """
@@ -48,7 +78,6 @@ class Connection:
         logging.info(self.amqp_port)
         logging.info(self.amqp_vhost)
 
-        # time.sleep(1)
         connection = pika.BlockingConnection(parameters)
         self.connection = connection
         channel = connection.channel()
@@ -57,9 +86,14 @@ class Connection:
             channel.queue_declare(queue=queue, durable=False)
         self.channel = channel
 
+        self.messages_queue = Queue()
+
+    def handle_message(self, ch, method, properties, body):
+        self.messages_queue.put((ch, method, properties, body))
+
     def consume(self, queue, callback):
-        consumer = BasicConsumer(callback, self.channel, name = "BasicConsumer", daemon = True)
-        self.channel.basic_consume(consumer.handle_message,
+        self.consumer = BasicConsumer(callback, self.messages_queue, name = "ConsumerThread")
+        self.channel.basic_consume(self.handle_message,
                       queue=queue,
                       no_ack=False)
 
