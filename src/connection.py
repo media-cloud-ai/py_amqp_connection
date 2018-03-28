@@ -124,14 +124,22 @@ class Connection:
             return None
 
     def consume(self, queue, callback):
-        BasicConsumer(callback, self.messages_queue, self.results_queue, name = "ConsumerThread")
+        try:
+            self.consumer = BasicConsumer(callback, self.messages_queue, self.results_queue, name = "ConsumerThread")
 
-        logging.info('Service started, waiting messages ...')
-        for method_frame, properties, body in self.channel.consume(queue=queue, no_ack=False):
-            self.handle_message(self.channel, method_frame, properties, body)
+            logging.info('Service started, waiting messages ...')
+            for method_frame, properties, body in self.channel.consume(queue=queue, no_ack=False):
+                self.handle_message(self.channel, method_frame, properties, body)
 
-            while self.get_consumer_result() is None:
-                self.connection.process_data_events(5)
+                while self.get_consumer_result() is None:
+                    self.connection.process_data_events(5)
+
+        except Exception as e:
+            logging.error("An error occurred consuming incoming messages: %s", e)
+        except KeyboardInterrupt:
+            pass
+
+        self.close()
 
     def send(self, queue, message):
         self.channel.basic_publish(
@@ -147,4 +155,5 @@ class Connection:
 
     def close(self):
         logging.info("close AMQP connection")
+        self.consumer.stop()
         self.connection.close()
