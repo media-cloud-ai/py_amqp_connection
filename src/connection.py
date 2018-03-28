@@ -18,26 +18,48 @@ class BasicConsumer(Thread):
         self.consumer_callback = callback
         self.messages_queue = messages_queue
         self.results_queue = results_queue
+        self.stopped = False
         self.start()
 
+    def stop(self):
+        self.stopped = True
+
+    def get_message(self):
+        try:
+            (ch, method, properties, body) = self.messages_queue.get(False)
+            return dict(channel=ch, method=method, properties=properties, body=body)
+        except Empty:
+            None
+
     def run(self):
-        while True:
-            try:
-                (ch, method, properties, body) = self.messages_queue.get()
+        try:
+            while not self.stopped:
+                message = self.get_message()
+                if message is None:
+                    time.sleep(1)
+                    continue
+
+                channel = message['channel']
+                method = message['method']
+                properties = message['properties']
+                body = message['body']
+
                 logging.debug("Consume message #%s: %s", method.delivery_tag, body)
 
-                result = self.consumer_callback.__call__(ch, method, properties, body)
+                result = self.consumer_callback.__call__(channel, method, properties, body)
                 logging.debug("Message #%s result: %s", method.delivery_tag, "ACK" if result in [None, True] else "NACK")
 
                 if result in [None, True]:
-                    ch.basic_ack(method.delivery_tag)
+                    channel.basic_ack(method.delivery_tag)
                 else:
-                    ch.basic_nack(method.delivery_tag)
+                    channel.basic_nack(method.delivery_tag)
 
                 self.results_queue.put(method.delivery_tag)
 
-            except Exception as e:
-                logging.error("An error occurred in consumer callback: %s", e)
+            logging.info("Consumer stopped.")
+
+        except Exception as e:
+            logging.error("An error occurred in consumer callback: %s", e)
 
 
 class Connection:
