@@ -5,24 +5,67 @@ import time
 import pika
 import logging
 
-class BasicConsumer:
-    def __init__(self, callback, channel):
-        self.consumer_callback = callback
-        self.channel = channel
+from queue import Queue, Empty
+from threading import Thread
 
-    def callback(self, ch, method, properties, body):
-        ack = False
+class BasicConsumer(Thread):
+    """
+    AMQP connection message consumer thread.
+    Handle incoming messages, process consumer's callback and manage acknowledge.
+    """
+    def __init__(self, callback, messages_queue, results_queue, group=None, target=None, name=None, args=(), kwargs=None, *, daemon=None):
+        Thread.__init__(self, group, target, name, args, kwargs, daemon=daemon)
+        self.consumer_callback = callback
+        self.messages_queue = messages_queue
+        self.results_queue = results_queue
+        self.stopped = False
+        self.start()
+
+    def stop(self):
+        self.stopped = True
+
+    def get_message(self):
         try:
-            ack = self.consumer_callback.__call__(ch, method, properties, body)
+            (ch, method, properties, body) = self.messages_queue.get(False)
+            return dict(channel=ch, method=method, properties=properties, body=body)
+        except Empty:
+            None
+
+    def run(self):
+        try:
+            while not self.stopped:
+                message = self.get_message()
+                if message is None:
+                    time.sleep(1)
+                    continue
+
+                channel = message['channel']
+                method = message['method']
+                properties = message['properties']
+                body = message['body']
+
+                logging.debug("Consume message #%s: %s", method.delivery_tag, body)
+
+                result = self.consumer_callback.__call__(channel, method, properties, body)
+                logging.debug("Message #%s result: %s", method.delivery_tag, "ACK" if result in [None, True] else "NACK")
+
+                if result in [None, True]:
+                    channel.basic_ack(method.delivery_tag)
+                else:
+                    channel.basic_nack(method.delivery_tag)
+
+                self.results_queue.put(method.delivery_tag)
+
+            logging.info("Consumer stopped.")
+
         except Exception as e:
             logging.error("An error occurred in consumer callback: %s", e)
 
-        if ack in [None, True]:
-            self.channel.basic_ack(method.delivery_tag)
-        else:
-            self.channel.basic_nack(method.delivery_tag)
 
 class Connection:
+    """
+    AMQP connection manager
+    """
 
     def get_parameter(self, key, param):
         key = "AMQP_" + key
@@ -60,7 +103,6 @@ class Connection:
         logging.info(self.amqp_port)
         logging.info(self.amqp_vhost)
 
-        # time.sleep(1)
         connection = pika.BlockingConnection(parameters)
         self.connection = connection
         channel = connection.channel()
@@ -69,14 +111,35 @@ class Connection:
             channel.queue_declare(queue=queue, durable=False)
         self.channel = channel
 
-    def consume(self, queue, callback):
-        consumer = BasicConsumer(callback, self.channel)
-        self.channel.basic_consume(consumer.callback,
-                      queue=queue,
-                      no_ack=False)
+        self.messages_queue = Queue()
+        self.results_queue = Queue()
 
-        logging.info('Service started, waiting messages ...')
-        self.channel.start_consuming()
+    def handle_message(self, ch, method, properties, body):
+        self.messages_queue.put((ch, method, properties, body))
+
+    def get_consumer_result(self):
+        try:
+            return self.results_queue.get(False)
+        except Empty:
+            return None
+
+    def consume(self, queue, callback):
+        try:
+            self.consumer = BasicConsumer(callback, self.messages_queue, self.results_queue, name = "ConsumerThread")
+
+            logging.info('Service started, waiting messages ...')
+            for method_frame, properties, body in self.channel.consume(queue=queue, no_ack=False):
+                self.handle_message(self.channel, method_frame, properties, body)
+
+                while self.get_consumer_result() is None:
+                    self.connection.process_data_events(5)
+
+        except Exception as e:
+            logging.error("An error occurred consuming incoming messages: %s", e)
+        except KeyboardInterrupt:
+            pass
+
+        self.close()
 
     def send(self, queue, message):
         self.channel.basic_publish(
@@ -92,4 +155,5 @@ class Connection:
 
     def close(self):
         logging.info("close AMQP connection")
+        self.consumer.stop()
         self.connection.close()
