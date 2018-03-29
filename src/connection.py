@@ -170,16 +170,22 @@ class Connection:
     def on_message(self, channel, basic_deliver, properties, body):
         logging.info('Received message # %s: %s', basic_deliver.delivery_tag, body)
 
-        ack = False
         try:
             ack = self._consumer_callback.__call__(channel, basic_deliver, properties, body)
+
+            if ack in [None, True]:
+                self.acknowledge_message(basic_deliver.delivery_tag)
+            else:
+                self.negative_acknowledge_message(basic_deliver.delivery_tag)
+
         except Exception as e:
             logging.error("An error occurred in consumer callback: %s", e)
+            self.stop()
 
-        if ack in [None, True]:
-            self.acknowledge_message(basic_deliver.delivery_tag)
-        else:
-            self.negative_acknowledge_message(basic_deliver.delivery_tag)
+        except KeyboardInterrupt:
+            logging.warn("User keyboard interruption...")
+            self.stop()
+
 
     def acknowledge_message(self, delivery_tag):
         logging.info('ACK message %s', delivery_tag)
