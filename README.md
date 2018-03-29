@@ -32,7 +32,7 @@ def callback(ch, method, properties, body):
     message = body.decode('utf-8')
     if message == 'Hello':
         # produce a respone
-        conn.sendJson('out_queue', "OK")
+        conn.publish_json('out_queue', "OK")
         # Acknowledge the message (ACK)
         return True
     # Requeue the message (NACK)
@@ -46,11 +46,6 @@ config = {
 	"port": 12345
 }
 
-conn.load_configuration(config)
-conn.connect([
-    'in_queue',
-    'out_queue'
-])
-conn.consume('in_queue', callback)
+conn.run(config, ['in_queue'],['out_queue'], callback)
 
 ```
