@@ -2,5 +2,5 @@ LICENSE
 README.md
 setup.cfg
 setup.py
-src/__init__.py
-src/connection.py
+amqp_connection/__init__.py
+amqp_connection/connection.py
