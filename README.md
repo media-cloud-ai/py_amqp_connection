@@ -46,6 +46,6 @@ config = {
 	"port": 12345
 }
 
-conn.run(config, ['in_queue'],['out_queue'], callback)
+conn.run(config, 'in_queue', ['out_queue'], callback)
 
 ```
