@@ -4,6 +4,7 @@ import json
 import time
 import pika
 import logging
+import threading
 
 class Connection:
 
@@ -13,21 +14,19 @@ class Connection:
         self._closing = False
         self._consumer_tag = None
 
-    def run(self, config: dict, in_queues: list, out_queues: list, consumer_callback):
-        self._in_queues = in_queues
+    def run(self, config: dict, in_queue: list, out_queues: list, consumer_callback):
+        self._in_queue = in_queue
         self._out_queues = out_queues
         self._consumer_callback = consumer_callback
 
         self.load_configuration(config)
-        self._connection = self.connect()
-        self._connection.ioloop.start()
+        self.connect()
+        self.open_channel()
+        self.start_consuming(in_queue)
 
-    def stop(self):
+    def close(self):
         logging.info('Stopping')
-        self._closing = True
-        self.stop_consuming()
-        self._connection.ioloop.stop()
-        self.close_connection()
+        self._connection.close()
         logging.info('Stopped')
 
     def get_parameter(self, key, param):
@@ -71,37 +70,7 @@ class Connection:
         logging.info(" - %s", self.amqp_port)
         logging.info(" - %s", self.amqp_vhost)
 
-        return pika.SelectConnection(parameters,
-                                     self.on_connection_open,
-                                     stop_ioloop_on_close=False)
-
-    def on_connection_open(self, connection):
-        logging.info('Connection opened')
-        self._connection.add_on_close_callback(self.on_connection_closed)
-        self.open_channel()
-
-    def on_connection_closed(self, connection, reply_code, reply_text):
-        self._channel = None
-        if self._closing:
-            self._connection.ioloop.stop()
-        else:
-            logging.warning('Connection closed, reopening in 5 seconds: (%s) %s',
-                           reply_code, reply_text)
-            self._connection.add_timeout(5, self.reconnect)
-
-    def reconnect(self):
-        self._connection.ioloop.stop()
-
-        if not self._closing:
-            # Create a new connection
-            self._connection = self.connect()
-            # There is now a new connection, needs a new ioloop to run
-            self._connection.ioloop.start()
-
-    def close_connection(self):
-        logging.info('Closing connection')
-        self._connection.close()
-
+        self._connection = pika.BlockingConnection(parameters)
 
     ###############
     ### CHANNEL ###
@@ -109,72 +78,52 @@ class Connection:
 
     def open_channel(self):
         logging.info('Creating a new channel')
-        self._connection.channel(on_open_callback=self.on_channel_open)
-
-    def on_channel_open(self, channel):
-        logging.info('Channel opened')
-        self._channel = channel
-        self._channel.add_on_close_callback(self.on_channel_closed)
-
-        for queue in self._in_queues:
-            self.setup_queue(queue, self.on_queue_declareok_consume)
-        for queue in self._out_queues:
-            self.setup_queue(queue, self.on_queue_declareok)
-
-    def on_channel_closed(self, channel, reply_code, reply_text):
-        logging.warning('Channel %i was closed: (%s) %s',
-                       channel, reply_code, reply_text)
-        self._connection.close()
-
-    def on_cancelok(self, unused_frame):
-        logging.info('RabbitMQ acknowledged the cancellation of the consumer')
-        self.close_channel()
-
-    def close_channel(self):
-        logging.info('Closing the channel')
-        self._channel.close()
-
+        self._channel = self._connection.channel()
+        self._channel.basic_qos(prefetch_count=1)
 
     #############
     ### QUEUE ###
     #############
 
-    def setup_queue(self, queue_name, callback=None):
+    def setup_queues(self):
+        for queue in self._out_queues:
+            self.declare_queue(queue)
+
+        self.declare_queue(self._in_queues)
+
+    def declare_queue(self, queue_name):
         logging.info('Declaring queue: %s', queue_name)
-        self._channel.queue_declare(callback, queue_name)
-
-    def on_queue_declareok_consume(self, method):
-        self.on_queue_declareok(method)
-        self.start_consuming(method.method.queue)
-
-    def on_queue_declareok(self, method):
-        logging.info('Queue declared: %s', method.method.queue)
-
+        self._channel.queue_declare(queue_name)
 
     ###############
     ### CONSUME ###
     ###############
 
     def start_consuming(self, queue_name):
-        logging.info('Issuing consumer related RPC commands')
-        self._channel.add_on_cancel_callback(self.on_consumer_cancelled)
-        self._channel.basic_qos(prefetch_count=1)
-        self._consumer_tag = self._channel.basic_consume(self.on_message, queue_name)
+        logging.info('Start consuming on queue %s', queue_name)
+        self._consumer_tag = self._channel.basic_consume(self.on_message,
+                queue = queue_name,
+                no_ack = False)
 
-    def on_consumer_cancelled(self, method_frame):
-        logging.info('Consumer was cancelled remotely, shutting down: %r',
-                    method_frame)
-        if self._channel:
-            self._channel.close()
+        logging.info('Service started, waiting messages ...')
+        self._channel.start_consuming()
+
+    def process_message(self, channel, basic_deliver, properties, body, ack):
+        try:
+            ack = self._consumer_callback.__call__(channel, basic_deliver, properties, body)
+        except Exception as e:
+            logging.error("An error occurred in consumer callback: %s", e)
 
     def on_message(self, channel, basic_deliver, properties, body):
         logging.info('Received message # %s: %s', basic_deliver.delivery_tag, body)
 
         ack = False
-        try:
-            ack = self._consumer_callback.__call__(channel, basic_deliver, properties, body)
-        except Exception as e:
-            logging.error("An error occurred in consumer callback: %s", e)
+
+        thread = threading.Thread(target=self.process_message, kwargs={"channel": channel, "basic_deliver": basic_deliver, "properties": properties, "body": body, "ack": ack})
+        thread.start()
+        while thread.is_alive():
+            time.sleep(5)
+            self._connection.process_data_events()
 
         if ack in [None, True]:
             self.acknowledge_message(basic_deliver.delivery_tag)
@@ -192,8 +141,7 @@ class Connection:
     def stop_consuming(self):
         if self._channel:
             logging.info('Sending a Basic.Cancel RPC command to RabbitMQ')
-            self._channel.basic_cancel(self.on_cancelok, self._consumer_tag)
-
+            self._channel.basic_cancel(self._consumer_tag)
 
     ###############
     ### PUBLISH ###
