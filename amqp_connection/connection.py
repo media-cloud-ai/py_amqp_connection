@@ -66,7 +66,7 @@ class Connection:
             credentials
         )
 
-        logging.info("Connection to AMQP:")
+        logging.info("**** Connection to AMQP:")
         logging.info(" - %s", self.amqp_hostname)
         logging.info(" - %s", self.amqp_port)
         logging.info(" - %s", self.amqp_vhost)
@@ -114,7 +114,6 @@ class Connection:
     def on_channel_open(self, channel):
         logging.info('Channel opened')
         self._channel = channel
-        self._channel.basic_qos(prefetch_count=1)
         self._channel.add_on_close_callback(self.on_channel_closed)
 
         for queue in self._in_queues:
@@ -159,6 +158,7 @@ class Connection:
     def start_consuming(self, queue_name):
         logging.info('Issuing consumer related RPC commands')
         self._channel.add_on_cancel_callback(self.on_consumer_cancelled)
+        self._channel.basic_qos(prefetch_count=1)
         self._consumer_tag = self._channel.basic_consume(self.on_message, queue_name)
 
     def on_consumer_cancelled(self, method_frame):

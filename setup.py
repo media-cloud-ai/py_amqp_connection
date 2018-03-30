@@ -21,6 +21,6 @@ setup(
         'amqp_connection'
     ],
     package_dir = {
-        'amqp_connection': os.path.join(dir_name, 'src')
+        'amqp_connection': os.path.join(dir_name, 'amqp_connection')
     },
 )
