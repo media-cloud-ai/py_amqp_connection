@@ -14,7 +14,7 @@ class Connection:
         self._closing = False
         self._consumer_tag = None
 
-    def run(self, config: dict, in_queue: list, out_queues: list, consumer_callback):
+    def run(self, config: dict, in_queue: str, out_queues: list, consumer_callback):
         self._in_queue = in_queue
         self._out_queues = out_queues
         self._consumer_callback = consumer_callback
@@ -89,7 +89,7 @@ class Connection:
         for queue in self._out_queues:
             self.declare_queue(queue)
 
-        self.declare_queue(self._in_queues)
+        self.declare_queue(self._in_queue)
 
     def declare_queue(self, queue_name):
         logging.info('Declaring queue: %s', queue_name)
