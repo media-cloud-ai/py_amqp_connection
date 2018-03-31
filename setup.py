@@ -7,7 +7,7 @@ dir_name = os.path.dirname(__file__)
 
 setup(
     name = 'amqp_connection',
-    version = '1.3',
+    version = '1.4',
     description = 'Python AMQP connection for worker',
     license='MIT',
     keywords = [
@@ -21,6 +21,6 @@ setup(
         'amqp_connection'
     ],
     package_dir = {
-        'amqp_connection': os.path.join(dir_name, 'src')
+        'amqp_connection': os.path.join(dir_name, 'amqp_connection')
     },
 )
