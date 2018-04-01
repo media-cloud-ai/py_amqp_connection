@@ -22,6 +22,7 @@ class Connection:
         self.load_configuration(config)
         self.connect()
         self.open_channel()
+        self.setup_queues()
         self.start_consuming(in_queue)
 
     def close(self):
