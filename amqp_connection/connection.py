@@ -4,7 +4,8 @@ import json
 import time
 import pika
 import logging
-import threading
+
+from amqp_connection.consumer import Consumer
 
 class Connection:
 
@@ -109,24 +110,24 @@ class Connection:
         logging.info('Service started, waiting messages ...')
         self._channel.start_consuming()
 
-    def process_message(self, channel, basic_deliver, properties, body, ack):
+    def process_message(self, channel, basic_deliver, properties, body):
+        ack = False
         try:
             ack = self._consumer_callback.__call__(channel, basic_deliver, properties, body)
         except Exception as e:
             logging.error("An error occurred in consumer callback: %s", e)
+        return ack
 
     def on_message(self, channel, basic_deliver, properties, body):
         logging.info('Received message # %s: %s', basic_deliver.delivery_tag, body)
 
-        ack = False
-
-        thread = threading.Thread(target=self.process_message, kwargs={"channel": channel, "basic_deliver": basic_deliver, "properties": properties, "body": body, "ack": ack})
-        thread.start()
-        while thread.is_alive():
+        consumer = Consumer(target=self.process_message, args=(channel, basic_deliver, properties, body))
+        consumer.start()
+        while consumer.is_alive():
             time.sleep(5)
             self._connection.process_data_events()
 
-        if ack in [None, True]:
+        if consumer.get_result() in [None, True]:
             self.acknowledge_message(basic_deliver.delivery_tag)
         else:
             self.negative_acknowledge_message(basic_deliver.delivery_tag)
