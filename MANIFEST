@@ -4,3 +4,4 @@ setup.cfg
 setup.py
 amqp_connection/__init__.py
 amqp_connection/connection.py
+amqp_connection/consumer.py
