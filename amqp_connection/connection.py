@@ -67,7 +67,7 @@ class Connection:
 
             except pika.exceptions.AMQPConnectionError as e:
                 logging.error("Connection error: %s", e)
-                delay = 10
+                delay = delay if delay else 10
                 self.close()
                 continue
 
