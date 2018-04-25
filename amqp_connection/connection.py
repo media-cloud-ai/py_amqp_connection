@@ -24,6 +24,8 @@ class Connection:
         self.connect(in_queue)
 
     def close(self):
+        if not self._connection or self._connection.is_closed:
+            return
         logging.info('Stopping')
         self._connection.close()
         logging.info('Stopped')
@@ -52,10 +54,30 @@ class Connection:
     ##################
 
     def connect(self, in_queue):
-        self.open_connection()
-        self.open_channel()
-        self.setup_queues()
-        self.start_consuming(in_queue)
+        reconnection_delay = 0
+        while True:
+            if reconnection_delay:
+                logging.info("Try reconnection in %s seconds...", reconnection_delay)
+                time.sleep(reconnection_delay)
+            else:
+                reconnection_delay = 10
+
+            try:
+                self.open_connection()
+                self.open_channel()
+                self.setup_queues()
+                self.start_consuming(in_queue)
+
+            except pika.exceptions.AMQPConnectionError as e:
+                logging.error("Connection error: %s", e)
+                self.close()
+                continue
+
+            except Exception as e:
+                logging.error("An error occurred consuming: %s", e)
+                self.close()
+
+            break
 
     def open_connection(self):
         credentials = pika.PlainCredentials(
@@ -77,16 +99,6 @@ class Connection:
 
         self._connection = pika.BlockingConnection(parameters)
 
-    def try_reconnection(self, in_queue: str, delay: int):
-        while True:
-            try:
-                logging.info("Try reconnection in %s seconds...", delay)
-                time.sleep(delay)
-                self.connect(in_queue)
-            except pika.exceptions.AMQPConnectionError as e:
-                logging.warning("Could not reconnect: %s", e)
-                continue
-            break
 
     ###############
     ### CHANNEL ###
@@ -121,18 +133,8 @@ class Connection:
                 queue = queue_name,
                 no_ack = False)
 
-        try:
-            logging.info('Service started, waiting messages ...')
-            self._channel.start_consuming()
-
-        except pika.exceptions.ConnectionClosed as e:
-            logging.warning("Connection forced : %s", e)
-            self.close()
-            self.try_reconnection(queue_name, 10)
-
-        except Exception as e:
-            logging.error("An error occurred consuming: %s", e)
-            self.close()
+        logging.info('Service started, waiting messages ...')
+        self._channel.start_consuming()
 
     def process_message(self, channel, basic_deliver, properties, body):
         ack = False
