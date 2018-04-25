@@ -21,10 +21,7 @@ class Connection:
         self._consumer_callback = consumer_callback
 
         self.load_configuration(config)
-        self.connect()
-        self.open_channel()
-        self.setup_queues()
-        self.start_consuming(in_queue)
+        self.connect(in_queue)
 
     def close(self):
         logging.info('Stopping')
@@ -54,7 +51,13 @@ class Connection:
     ### CONNECTION ###
     ##################
 
-    def connect(self):
+    def connect(self, in_queue):
+        self.open_connection()
+        self.open_channel()
+        self.setup_queues()
+        self.start_consuming(in_queue)
+
+    def open_connection(self):
         credentials = pika.PlainCredentials(
             self.amqp_username,
             self.amqp_password
@@ -73,6 +76,17 @@ class Connection:
         logging.info(" - %s", self.amqp_vhost)
 
         self._connection = pika.BlockingConnection(parameters)
+
+    def try_reconnection(self, in_queue: str, delay: int):
+        while True:
+            try:
+                logging.info("Try reconnection in %s seconds...", delay)
+                time.sleep(delay)
+                self.connect(in_queue)
+            except pika.exceptions.AMQPConnectionError as e:
+                logging.warning("Could not reconnect: %s", e)
+                continue
+            break
 
     ###############
     ### CHANNEL ###
@@ -107,8 +121,18 @@ class Connection:
                 queue = queue_name,
                 no_ack = False)
 
-        logging.info('Service started, waiting messages ...')
-        self._channel.start_consuming()
+        try:
+            logging.info('Service started, waiting messages ...')
+            self._channel.start_consuming()
+
+        except pika.exceptions.ConnectionClosed as e:
+            logging.warning("Connection forced : %s", e)
+            self.close()
+            self.try_reconnection(queue_name, 10)
+
+        except Exception as e:
+            logging.error("An error occurred consuming: %s", e)
+            self.close()
 
     def process_message(self, channel, basic_deliver, properties, body):
         ack = False
