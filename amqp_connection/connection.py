@@ -53,14 +53,11 @@ class Connection:
     ### CONNECTION ###
     ##################
 
-    def connect(self, in_queue):
-        reconnection_delay = 0
+    def connect(self, in_queue, delay = 0):
         while True:
-            if reconnection_delay:
-                logging.info("Try reconnection in %s seconds...", reconnection_delay)
-                time.sleep(reconnection_delay)
-            else:
-                reconnection_delay = 10
+            if delay:
+                logging.info("Try connection in %s seconds...", delay)
+                time.sleep(delay)
 
             try:
                 self.open_connection()
@@ -70,6 +67,7 @@ class Connection:
 
             except pika.exceptions.AMQPConnectionError as e:
                 logging.error("Connection error: %s", e)
+                delay = 10
                 self.close()
                 continue
 
@@ -98,7 +96,6 @@ class Connection:
         logging.info(" - %s", self.amqp_vhost)
 
         self._connection = pika.BlockingConnection(parameters)
-
 
     ###############
     ### CHANNEL ###
