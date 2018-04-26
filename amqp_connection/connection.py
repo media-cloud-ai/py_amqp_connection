@@ -21,12 +21,11 @@ class Connection:
         self._consumer_callback = consumer_callback
 
         self.load_configuration(config)
-        self.connect()
-        self.open_channel()
-        self.setup_queues()
-        self.start_consuming(in_queue)
+        self.connect(in_queue)
 
     def close(self):
+        if not self._connection or self._connection.is_closed:
+            return
         logging.info('Stopping')
         self._connection.close()
         logging.info('Stopped')
@@ -54,7 +53,31 @@ class Connection:
     ### CONNECTION ###
     ##################
 
-    def connect(self):
+    def connect(self, in_queue, delay = 0):
+        while True:
+            if delay:
+                logging.info("Try connection in %s seconds...", delay)
+                time.sleep(delay)
+
+            try:
+                self.open_connection()
+                self.open_channel()
+                self.setup_queues()
+                self.start_consuming(in_queue)
+
+            except pika.exceptions.AMQPConnectionError as e:
+                logging.error("Connection error: %s", e)
+                delay = delay if delay else 10
+                self.close()
+                continue
+
+            except Exception as e:
+                logging.error("An error occurred consuming: %s", e)
+                self.close()
+
+            break
+
+    def open_connection(self):
         credentials = pika.PlainCredentials(
             self.amqp_username,
             self.amqp_password
